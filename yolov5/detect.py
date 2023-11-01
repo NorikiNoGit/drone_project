@@ -188,6 +188,9 @@ def run(
                 
                 # detected_results をリストとして初期化
                 detected_results = []
+                # 画面の高さと幅を取得
+                height, width, _ = im0.shape  # Get the shape of the image
+
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
@@ -199,10 +202,13 @@ def run(
                     #ここからしたが新しく加えたコンソール出力
                     # Get coordinates
                     x1, y1, x2, y2 = [int(x) for x in xyxy]
-                    coordinates = f"({x1}, {y1}), ({x2}, {y2})"
+                    coordinates = f"({x1}, {x2}), ({y1}, {y2})"
                     # Output the results
+                    # if label == 'cell phone':
+                    #     print(f"Detected {label} at coordinates {coordinates} with confidence {conf:.2f}")
                     # print(f"Detected {label} at coordinates {coordinates} with confidence {conf:.2f}")
-                    
+                    # print(f"height: {height}, width:{width}")
+
                     # ここまで 良い感じに出力できてますね。
                     # data に新しいデータを渡す。
                     # detected_results = {
@@ -211,10 +217,14 @@ def run(
                     #     "confidence": f'{conf:.2f}'
                     # }
                     # detected_results に結果を追加
+                    target_object = 'cell phone'
                     detected_results.append({
                         "label": label,
                         "coordinates": coordinates,
-                        "confidence": f'{conf:.2f}'
+                        "confidence": f'{conf:.2f}',
+                        "height":height,
+                        "width":width,
+                        "target": target_object
                     })
                     # threading.Thread(target=update_data_periodically(detected_results)).start()
                     # print(detected_results)

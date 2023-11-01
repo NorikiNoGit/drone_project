@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import requests
+import re
 
 import cv2 as cv
 import numpy as np
@@ -57,6 +58,9 @@ class DroneManager(metaclass=Singleton):
                                                           args=(self.stop_event,))
         self._recieve_detected_results.start()
 
+        # commandを重複して実行しないようにする。
+        self._command_semaphore = threading.Semaphore(1)
+        self._command_thread = None
 
         self.patrol_event = None
         self.is_patrol = False
@@ -109,23 +113,36 @@ class DroneManager(metaclass=Singleton):
         # import signal
         # os.kill(self.proc.pid, signal.CTRL_C_EVENT)
 
-    def send_command(self, command):
-        logger.info({'action': 'send_command', 'command': command})
-        self.socket.sendto(command.encode('utf-8'), self.drone_address)
+    def send_command(self, command, blocking=True):
+        self._command_thread = threading.Thread(
+            target=self._send_command,
+            args=(command, blocking,))
+        self._command_thread.start()
 
-        retry = 0
-        while self.response is None:
-            time.sleep(0.3)
-            if retry > 3:
-                break
-            retry += 1
+    def _send_command(self, command, blocking=True):
+        is_acquire = self._command_semaphore.acquire(blocking=blocking)
+        if is_acquire:
+            with contextlib.ExitStack() as stack:
+                stack.callback(self._command_semaphore.release)
+                logger.info({'action': 'send_command', 'command': command})
+                self.socket.sendto(command.encode('utf-8'), self.drone_address)
 
-        if self.response is None:
-            response = None
+                retry = 0
+                while self.response is None:
+                    time.sleep(0.3)
+                    if retry > 3:
+                        break
+                    retry += 1
+
+                if self.response is None:
+                    response = None
+                else:
+                    response = self.response.decode('utf-8')
+                self.response = None
+                return response
+
         else:
-            response = self.response.decode('utf-8')
-        self.response = None
-        return response
+            logger.warning({'action': 'send_command', 'command': command, 'status': 'not_acquire'})
 
     def takeoff(self):
         return self.send_command('takeoff')
@@ -290,7 +307,68 @@ class DroneManager(metaclass=Singleton):
             camera = cv.VideoCapture(0)
             success, frame = camera.read()
             _, jpeg = cv.imencode('.jpg', frame)
+                 
 
             # _, jpeg = cv.imencode('.jpg', frame)
             jpeg_binary = jpeg.tobytes()
+            
+
+            detected_results = self.detected_results
+            yolo_is_on = False
+            try:
+                target_is_on = False
+                for detected_result in detected_results:
+                    label = detected_result.get("label","")
+                    coordinates = detected_result.get("coordinates", "")
+                    confidence = detected_result.get("confidence","")
+                    height = detected_result.get("height","")
+                    width = detected_result.get("width","")
+                    target = detected_result.get("target","")
+                    
+                    if coordinates:  # coordinatesが空でない場合
+                        yolo_is_on = True
+                        numbers = re.findall(r'\d+', coordinates)
+                        x1, x2, y1, y2 = map(int, numbers)
+                        frame_center_x = width/2
+                        frame_center_y = height/2
+                        if label == target:
+                            target_is_on = True
+                            object_center_x = (x1+x2)/2
+                            object_center_y = (y1+y2)/2
+                
+                if target_is_on == True:
+                    gap_x = frame_center_x-object_center_x
+                    gap_y = frame_center_y-object_center_y
+                else:
+                    gap_x = 0
+                    gap_y = 0
+                        
+            except Exception as e:
+                print(e)
+
+            if yolo_is_on == True:
+                drone_x, drone_y, drone_z, speed = 0, 0, 0, self.speed
+                if gap_x < -30:
+                    drone_y = -30
+                if gap_x > 30:
+                    drone_y = 30
+                if gap_y < -15:
+                    drone_z = -30
+                if gap_y > 15:
+                    drone_z = 30
+                # if percent_face > 0.30:
+                #     drone_x = -30
+                # if percent_face < 0.02:
+                #     drone_x = 30
+                # self.send_command(f'go {drone_x} {drone_y} {drone_z} {speed}',
+                #                 blocking=False)
+                # break
             yield jpeg_binary
+
+            
+
+            
+                
+                
+                
+          

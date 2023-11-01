@@ -49,7 +49,8 @@ if __name__ == "__main__":
     
     
     # Arguments to pass to detect.py
-    detect_args = ["--source", "0", "--nosave"]  # Add your arguments here
+    # detect_args = ["--source", "0", "--nosave"]  # Add your arguments here
+    detect_args = ["--source", "'http://localhost:5000/video/streaming'", "--nosave"] # droneのイメージに対してyoloを適用する。
     
     # Creating processes
     p1 = multiprocessing.Process(target=worker, args=(venv1_path, detect_script_path, requirements1_path, detect_args))
